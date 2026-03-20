@@ -1,11 +1,391 @@
 <!DOCTYPE html>
-<html lang="en">
-    <head>
-        <meta charset="UTF-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>PakePlus</title>
-    </head>
-    <body>
-        PakePlus
-    </body>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>视频发布进度记录</title>
+    <style>
+        /* 全局基础样式 - 极简+高级感核心 */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+        }
+
+        html {
+            scroll-behavior: smooth; /* 平滑滚动 */
+        }
+
+        body {
+            /* 背景图 + 遮罩层保证文字可读性 */
+            background: url('assets/bg.jpg') center center / cover no-repeat fixed;
+            background-color: #f8f9fa; /* 降级背景 */
+            position: relative;
+            padding: 40px 16px 32px; /* 上下充足padding，避免贴边 */
+            max-width: 500px;
+            margin: 0 auto;
+            min-height: 100vh;
+            /* 防止高分辨率背景图失真 */
+            image-rendering: -webkit-optimize-contrast;
+            image-rendering: crisp-edges;
+        }
+
+        /* 背景遮罩层（单独抽离，提升层级控制） */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(180deg, rgba(255,255,255,0.85), rgba(248,249,250,0.92));
+            z-index: -2;
+            pointer-events: none;
+        }
+
+        /* 顶部光晕氛围层 - 适配高分辨率素材 */
+        .glow-overlay {
+            position: fixed;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 100%;
+            max-width: 500px;
+            height: 120px;
+            background: url('assets/glow.png') top center / contain no-repeat;
+            opacity: 0.18;
+            z-index: -1;
+            pointer-events: none;
+            /* 光晕图适配 */
+            background-size: cover;
+        }
+
+        /* 全局动画定义 - 克制且轻量 */
+        @keyframes pageFadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes blockFill {
+            from { transform: scale(0.98); opacity: 0.8; }
+            to { transform: scale(1); opacity: 1; }
+        }
+
+        @keyframes quoteFadeIn {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* 统一卡片样式 - 增强层级和质感 */
+        .card {
+            background-color: rgba(255, 255, 255, 0.95);
+            border-radius: 16px; /* 更大圆角提升高级感 */
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06); /* 增强阴影层级 */
+            padding: 24px;
+            margin-bottom: 28px; /* 模块间距优化 */
+            backdrop-filter: blur(8px); /* 玻璃质感 */
+            -webkit-backdrop-filter: blur(8px);
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* 标题区 - 强化目标感和视觉层级 */
+        .title-area {
+            text-align: center;
+        }
+
+        .title-text {
+            font-size: 1.25rem;
+            color: #6b7280;
+            margin-bottom: 12px;
+            font-weight: 500;
+            letter-spacing: 0.3px;
+        }
+
+        .remaining-count {
+            font-size: 2.6rem;
+            font-weight: 600;
+            /* 渐变文字 - 高级感点睛 */
+            background: linear-gradient(90deg, #007aff, #0056cc);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            letter-spacing: -0.8px;
+            margin-bottom: 8px;
+        }
+
+        /* 进度区 - 设计感进度面板 */
+        .progress-area {
+            padding: 24px 20px;
+            text-align: center;
+        }
+
+        /* iPhone图片容器 - 适配高分辨率PNG */
+        .iphone-container {
+            margin-bottom: 20px;
+            height: 100px; /* 适配高分辨率图片的显示高度 */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        .iphone-img {
+            /* 关键：适配2730×1535高分辨率PNG，防止拉伸变形 */
+            max-width: 80%;
+            max-height: 100%;
+            object-fit: contain; /* 保持图片比例 */
+            opacity: 0; /* 初始透明 */
+            filter: blur(8px); /* 初始模糊 */
+            transition: opacity 0.6s ease-out, filter 0.8s ease-out; /* 平滑过渡 */
+            /* 优化高分辨率图片渲染 */
+            image-rendering: -webkit-optimize-contrast;
+        }
+
+        .progress-grid {
+            display: grid;
+            grid-template-columns: repeat(15, 1fr);
+            gap: 6px; /* 格子间距充足，不拥挤 */
+        }
+
+        /* 进度方块 - 精致化设计 + 增强渐变 */
+        .progress-block {
+            width: 100%;
+            aspect-ratio: 1/1;
+            background-color: #e5e7eb; /* 未完成浅灰 */
+            border-radius: 8px; /* 圆角更精致 */
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03); /* 轻微阴影 */
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); /* 丝滑过渡 */
+            position: relative;
+            overflow: hidden;
+            /* 未完成状态轻微渐变 */
+        }
+        .progress-block::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, rgba(255,255,255,0.1), rgba(240,240,240,0));
+        }
+
+        /* 已完成方块 - 增强渐变+动画 */
+        .progress-block.completed {
+            background: linear-gradient(135deg, #34c759 0%, #28a745 50%, #1f8836 100%); /* 多层绿色渐变 */
+            animation: blockFill 0.3s ease-out forwards;
+            box-shadow: 0 2px 4px rgba(52, 199, 89, 0.15); /* 完成态轻微发光阴影 */
+        }
+
+        /* 按钮区 - 有重量感的Pill Shape按钮 + 增强反馈 */
+        .action-area {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px; /* 按钮间距统一 */
+            padding: 0 8px;
+        }
+
+        .action-btn {
+            flex: 1;
+            padding: 24px 0;
+            font-size: 1.5rem;
+            font-weight: 600;
+            border: none;
+            border-radius: 9999px; /* Pill Shape 圆角 */
+            /* 增强渐变背景 - iOS蓝系 */
+            background: linear-gradient(135deg, #007aff 0%, #0056cc 100%);
+            color: white;
+            cursor: pointer;
+            /* 增强浮起感阴影 */
+            box-shadow: 0 6px 18px rgba(0, 122, 255, 0.2);
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            -webkit-tap-highlight-color: transparent; /* 去除点击高亮 */
+            position: relative;
+            overflow: hidden;
+        }
+        /* 按钮高光层 */
+        .action-btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, rgba(255,255,255,0.15), rgba(255,255,255,0));
+            pointer-events: none;
+        }
+
+        /* 按钮点击反馈 - 强化重量的按压感 */
+        .action-btn:active {
+            transform: scale(0.94); /* 更明显缩小反馈 */
+            background: linear-gradient(135deg, #0066cc 0%, #004799 100%); /* 颜色更深 */
+            box-shadow: 0 3px 9px rgba(0, 122, 255, 0.12); /* 阴影缩小且变浅 */
+        }
+
+        /* 文案区 - 仪式感+陪伴感 + 增强质感 */
+        .quote-area {
+            text-align: center;
+            font-size: 1.15rem;
+            color: #4b5563; /* 柔和深灰，易读且不刺眼 */
+            line-height: 1.8; /* 更充足行高 */
+            padding: 24px 28px;
+            background-color: rgba(255, 255, 255, 0.9);
+            /* 增强毛玻璃，提升质感 */
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            opacity: 0; /* 初始透明，用于淡入动画 */
+            animation: quoteFadeIn 0.6s ease-out forwards;
+            border: 1px solid rgba(255,255,255,0.2); /* 细微边框增强层级 */
+        }
+
+        /* 页面加载动画 */
+        body {
+            opacity: 0;
+            animation: pageFadeIn 0.8s ease-out forwards;
+        }
+    </style>
+</head>
+<body>
+    <!-- 顶部光晕氛围层 -->
+    <div class="glow-overlay"></div>
+
+    <!-- 标题区：卡片式布局，强化层级 -->
+    <div class="title-area card">
+        <div class="title-text">距离目标还剩</div>
+        <div class="remaining-count" id="remainingTitle">150</div>
+        <div class="title-text">条视频</div>
+    </div>
+
+    <!-- 进度区：设计感进度面板 + iPhone图片 -->
+    <div class="progress-area card">
+        <!-- iPhone图片容器（适配高分辨率PNG） -->
+        <div class="iphone-container">
+            <img src="assets/iphone.png" alt="iPhone主视觉" class="iphone-img" id="iphoneImg">
+        </div>
+        <!-- 进度格子 -->
+        <div class="progress-grid" id="progressGrid"></div>
+    </div>
+
+    <!-- 操作区：有重量感的按钮 -->
+    <div class="action-area">
+        <button class="action-btn" data-num="1">1</button>
+        <button class="action-btn" data-num="2">2</button>
+        <button class="action-btn" data-num="3">3</button>
+        <button class="action-btn" data-num="4">4</button>
+    </div>
+
+    <!-- 文案区：仪式感每日一句 -->
+    <div class="quote-area card" id="motivationQuote">每一份坚持，都有意义！</div>
+
+    <script>
+        // 核心配置 - 功能逻辑完全保留
+        const TARGET_TOTAL = 150;
+        let currentTotal = 0;
+        const iphoneImg = document.getElementById('iphoneImg'); // iPhone图片元素
+
+        // 励志文案列表 - 保持不变
+        const motivationQuotes = [
+            "每一份坚持，都有意义！",
+            "积少成多，终能达成目标！",
+            "今天的努力，明天的收获！",
+            "一步一个脚印，慢慢来，会很快！",
+            "坚持下去，你会感谢现在的自己！",
+            "完成一个小目标，离成功更近一步！"
+        ];
+
+        // 页面初始化
+        function initApp() {
+            loadFromLocalStorage();
+            renderProgressBlocks();
+            updateAppUI();
+            bindButtonEvents();
+            showRandomQuote();
+        }
+
+        // 从localStorage读取数据
+        function loadFromLocalStorage() {
+            const savedTotal = localStorage.getItem('videoPublishTotal');
+            if (savedTotal !== null) {
+                currentTotal = Math.max(0, Math.min(TARGET_TOTAL, parseInt(savedTotal)));
+            }
+        }
+
+        // 生成150个进度方块
+        function renderProgressBlocks() {
+            const grid = document.getElementById('progressGrid');
+            grid.innerHTML = '';
+
+            for (let i = 0; i < TARGET_TOTAL; i++) {
+                const block = document.createElement('div');
+                block.className = 'progress-block';
+                if (i < currentTotal) {
+                    block.classList.add('completed');
+                }
+                grid.appendChild(block);
+            }
+        }
+
+        // 更新UI - 新增iPhone渐显逻辑（适配高分辨率图片）
+        function updateAppUI() {
+            const remaining = TARGET_TOTAL - currentTotal;
+            // 仅更新数字部分，保持文案结构
+            document.getElementById('remainingTitle').textContent = remaining;
+            
+            // 计算进度比例，控制iPhone图片显隐和模糊度
+            const progressRatio = currentTotal / TARGET_TOTAL;
+            iphoneImg.style.opacity = progressRatio;
+            // 模糊度从8px线性降到0px（高分辨率图片模糊过渡更自然）
+            iphoneImg.style.filter = `blur(${8 * (1 - progressRatio)}px)`;
+            
+            // 更新进度方块状态
+            const allBlocks = document.querySelectorAll('.progress-block');
+            allBlocks.forEach((block, index) => {
+                if (index < currentTotal) {
+                    block.classList.add('completed');
+                } else {
+                    block.classList.remove('completed');
+                }
+            });
+            
+            localStorage.setItem('videoPublishTotal', currentTotal.toString());
+        }
+
+        // 绑定按钮事件 - 功能不变
+        function bindButtonEvents() {
+            const buttons = document.querySelectorAll('.action-btn');
+            buttons.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const addNum = parseInt(btn.getAttribute('data-num'));
+                    currentTotal += addNum;
+                    if (currentTotal > TARGET_TOTAL) {
+                        currentTotal = TARGET_TOTAL;
+                    }
+                    updateAppUI();
+                    showRandomQuote();
+                });
+            });
+        }
+
+        // 显示随机文案 - 重置动画增强仪式感
+        function showRandomQuote() {
+            const quoteEl = document.getElementById('motivationQuote');
+            // 重置动画，每次点击都有淡入效果
+            quoteEl.style.animation = 'none';
+            setTimeout(() => {
+                const randomIndex = Math.floor(Math.random() * motivationQuotes.length);
+                quoteEl.textContent = motivationQuotes[randomIndex];
+                quoteEl.style.animation = 'quoteFadeIn 0.6s ease-out forwards';
+            }, 10);
+        }
+
+        // 页面加载完成后初始化（确保图片加载完成后再执行）
+        window.addEventListener('DOMContentLoaded', initApp);
+        
+        // 额外：确保iPhone图片加载完成后再处理过渡（防止闪屏）
+        iphoneImg.onload = function() {
+            updateAppUI(); // 重新触发一次UI更新，保证过渡正常
+        };
+    </script>
+</body>
 </html>
